@@ -218,11 +218,13 @@ int doProcessBuffer(QzSession_T *sess,
                 done = 1;
             }
         } else {
+            printf("qzDecompress IN. consumed=%u, produced=%u, block_src_len=%u, *src_len=%u\n", consumed, produced, block_src_len, *src_len);
             ret = qzDecompress(sess, src + consumed, &block_src_len,
                                dst + produced, &block_dest_len);
             if (QZ_DATA_ERROR == ret ||
                 (QZ_BUF_ERROR == ret && 0 == block_src_len) ||
                 (QZ_OK == ret && block_src_len < *src_len)) {
+                printf("qzDecompress OUT. ret=%d, block_src_len=%u, *src_len=%u\n", ret, block_src_len, *src_len);
                 done = 1;
             }
         }
@@ -266,12 +268,14 @@ void doProcessFile(QzSession_T *sess, const char *src_file_name,
     FILE *dst_file = NULL;
     unsigned int bytes_read = 0;
     unsigned int bytes_lookahead = 0;
+    unsigned int byte_consumed = 0;
     long offset_revert = 0;
     unsigned int ratio_idx = 0;
     const unsigned int ratio_limit =
         sizeof(g_bufsz_expansion_ratio) / sizeof(unsigned int);
     unsigned int read_more = 0;
     int src_fd = 0;
+    int index = 0;
     RunTimeList_T *time_list_head = malloc(sizeof(RunTimeList_T));
     assert(NULL != time_list_head);
     gettimeofday(&time_list_head->time_s, NULL);
@@ -324,27 +328,38 @@ void doProcessFile(QzSession_T *sess, const char *src_file_name,
     dst_file = fopen(dst_file_name, "w");
     assert(dst_file != NULL);
 
+    printf("src_file_name=%s, src_fd=%d, src_file_size=%ld, dst_file_name=%s\n",
+        src_file_name, src_fd, src_file_size, dst_file_name);
+
     file_remaining = src_file_size;
     read_more = 1;
     do {
+        sleep(1);
         if (read_more) {
+            errno = 0;
             bytes_read = fread(src_buffer, 1, src_buffer_size, src_file);
-            QZ_INFO("Reading input file %s (%u Bytes)\n", src_file_name,
-                    bytes_read);
+            printf("Reading input file %s (%u Bytes), src_buffer_size:%u\n", src_file_name,
+                    bytes_read, src_buffer_size);
+            if(0 == bytes_read) {
+                printf("error: %d, %s\n", errno, strerror(errno));
+            }
+            byte_consumed = 0;
         } else {
-            bytes_read = file_remaining;
+            bytes_read = bytes_lookahead-bytes_read;   // continue to handle the remaining src
         }
 
         puts((is_compress) ? "Compressing..." : "Decompressing...");
 
         bytes_lookahead = bytes_read;
-        ret = doProcessBuffer(sess, src_buffer, &bytes_read, dst_buffer,
+        printf("doProcessBuffer IN. index=%d, bytes_read=%u, dst_file_size=%lu\n", index++, bytes_read, dst_file_size);
+        ret = doProcessBuffer(sess, src_buffer+byte_consumed, &bytes_read, dst_buffer,
                               dst_buffer_size, time_list_head, dst_file,
                               &dst_file_size, is_compress);
-
+        byte_consumed += bytes_read;
+        printf("doProcessBuffer OUT. bytes_read=%u, dst_file_size=%lu, ret=%d\n", bytes_read, dst_file_size, ret);
         if (QZ_DATA_ERROR == ret || QZ_BUF_ERROR == ret) {
             if (0 != bytes_read) {
-                offset_revert = (long)bytes_read - (long)bytes_lookahead;
+                offset_revert = (long)bytes_read - (long)bytes_lookahead; //liang
                 if (-1 == fseek(src_file, offset_revert, SEEK_CUR)) {
                     ret = ERROR;
                     goto exit;
@@ -379,6 +394,8 @@ void doProcessFile(QzSession_T *sess, const char *src_file_name,
             QZ_ERROR("Process file error: %d\n", ret);
             ret = ERROR;
             goto exit;
+        } else if (bytes_read < bytes_lookahead) {
+            read_more = 0;
         } else {
             read_more = 1;
         }
@@ -389,6 +406,7 @@ void doProcessFile(QzSession_T *sess, const char *src_file_name,
     displayStats(time_list_head, src_file_size, dst_file_size, is_compress);
 
 exit:
+    printf("doProcessFile OUT.\n");
     freeTimeList(time_list_head);
     fclose(src_file);
     fclose(dst_file);
