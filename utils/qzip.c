@@ -210,21 +210,26 @@ int doProcessBuffer(QzSession_T *sess,
         if (is_compress) {
             block_src_len = (*src_len - consumed) > block_buff_len ?
                             block_buff_len : (*src_len - consumed);
-            block_dest_len = dst_len - produced;
+            block_dest_len = dst_len;
 
             ret = qzCompress(sess, src + consumed, &block_src_len,
-                             dst + produced, &block_dest_len, 1);
+                             dst, &block_dest_len, 1);
             if (QZ_BUF_ERROR == ret && 0 == block_src_len) {
                 done = 1;
             }
         } else {
+            block_src_len = (*src_len - consumed) > block_buff_len ?
+                            block_buff_len : (*src_len - consumed);
+            block_dest_len = dst_len;
+
             printf("qzDecompress IN. consumed=%u, produced=%u, block_src_len=%u, *src_len=%u\n", consumed, produced, block_src_len, *src_len);
             ret = qzDecompress(sess, src + consumed, &block_src_len,
-                               dst + produced, &block_dest_len);
+                               dst, &block_dest_len);
+            printf("qzDecompress OUT. ret=%d, block_src_len=%u, block_dest_len=%u\n", ret, block_src_len, block_dest_len);
             if (QZ_DATA_ERROR == ret ||
                 (QZ_BUF_ERROR == ret && 0 == block_src_len) ||
                 (QZ_OK == ret && block_src_len < *src_len)) {
-                printf("qzDecompress OUT. ret=%d, block_src_len=%u, *src_len=%u\n", ret, block_src_len, *src_len);
+                printf("qzDecompress OUT2. ret=%d, block_src_len=%u, *src_len=%u\n", ret, block_src_len, *src_len);
                 done = 1;
             }
         }
@@ -242,14 +247,15 @@ int doProcessBuffer(QzSession_T *sess,
         consumed += block_src_len;
         produced += block_dest_len;
 
+        bytes_written = fwrite(dst, 1, block_dest_len, dst_file);
+        assert(bytes_written == block_dest_len);
+
         if (0 == (*src_len - consumed)) {
             done = 1;
         }
     }
 
-    bytes_written = fwrite(dst, 1, produced, dst_file);
-    assert(bytes_written == produced);
-    *dst_file_size = bytes_written;
+    *dst_file_size = produced;
     *src_len = consumed;
     return ret;
 }
