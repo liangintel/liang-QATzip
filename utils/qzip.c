@@ -275,10 +275,10 @@ void doProcessFile(QzSession_T *sess, const char *src_file_name,
     unsigned int bytes_read = 0;
     unsigned int bytes_lookahead = 0;
     unsigned int byte_consumed = 0;
-    long offset_revert = 0;
+    // long offset_revert = 0;
     unsigned int ratio_idx = 0;
-    const unsigned int ratio_limit =
-        sizeof(g_bufsz_expansion_ratio) / sizeof(unsigned int);
+    // const unsigned int ratio_limit =
+    //     sizeof(g_bufsz_expansion_ratio) / sizeof(unsigned int);
     unsigned int read_more = 0;
     int src_fd = 0;
     int index = 0;
@@ -357,46 +357,13 @@ void doProcessFile(QzSession_T *sess, const char *src_file_name,
         puts((is_compress) ? "Compressing..." : "Decompressing...");
 
         bytes_lookahead = bytes_read;
-        printf("doProcessBuffer IN. index=%d, bytes_read=%u, dst_file_size=%lu\n", index++, bytes_read, dst_file_size);
+        printf("doProcessBuffer IN. index=%d, bytes_read=%u, produced=%lu\n", index++, bytes_read, dst_file_size);
         ret = doProcessBuffer(sess, src_buffer+byte_consumed, &bytes_read, dst_buffer,
                               dst_buffer_size, time_list_head, dst_file,
                               &dst_file_size, is_compress);
         byte_consumed += bytes_read;
-        printf("doProcessBuffer OUT. bytes_read=%u, dst_file_size=%lu, ret=%d\n", bytes_read, dst_file_size, ret);
-        if (QZ_DATA_ERROR == ret || QZ_BUF_ERROR == ret) {
-            if (0 != bytes_read) {
-                offset_revert = (long)bytes_read - (long)bytes_lookahead; //liang
-                if (-1 == fseek(src_file, offset_revert, SEEK_CUR)) {
-                    ret = ERROR;
-                    goto exit;
-                }
-                read_more = 1;
-            } else if (QZ_BUF_ERROR == ret) {
-                //dest buffer not long enough
-                if (ratio_limit == ratio_idx) {
-                    QZ_ERROR("Could not expand more destination buffer\n");
-                    ret = ERROR;
-                    goto exit;
-                }
-
-                free(dst_buffer);
-                dst_buffer_size = src_buffer_size *
-                                  g_bufsz_expansion_ratio[ratio_idx++];
-                dst_buffer = malloc(dst_buffer_size);
-                if (NULL == dst_buffer) {
-                    QZ_ERROR("Fail to allocate destination buffer with size "
-                             "%u\n", dst_buffer_size);
-                    ret = ERROR;
-                    goto exit;
-                }
-
-                read_more = 0;
-            } else {
-                // corrupt data
-                ret = ERROR;
-                goto exit;
-            }
-        } else if (QZ_OK != ret) {
+        printf("doProcessBuffer OUT. bytes_read=%u, produced=%lu, ret=%d\n", bytes_read, dst_file_size, ret);
+        if (QZ_OK != ret) {
             QZ_ERROR("Process file error: %d\n", ret);
             ret = ERROR;
             goto exit;
